@@ -1,0 +1,56 @@
+"""Application configuration for the crypto signal bot."""
+
+TOP_SYMBOLS = [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "BNBUSDT",
+    "DOGEUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT",
+    "TRXUSDT",
+    "TONUSDT",
+    "DOTUSDT",
+    "SUIUSDT",
+    "APTUSDT",
+    "NEARUSDT",
+    "ARBUSDT",
+    "OPUSDT",
+    "INJUSDT",
+    "ATOMUSDT",
+    "SEIUSDT",
+]
+# Backward-compatible alias for older integrations.
+SYMBOLS = TOP_SYMBOLS
+
+MACRO_INTERVAL = "4h"
+TREND_INTERVAL = "1h"
+ENTRY_INTERVAL = "15m"
+# Backward-compatible alias for modules or user scripts from the MVP.
+SIGNAL_INTERVAL = ENTRY_INTERVAL
+CANDLE_LIMIT = 250
+
+TP_ATR_MULTIPLIER = 2.0
+SL_ATR_MULTIPLIER = 1.0
+MIN_MARKET_SCORE = 7.0
+
+TRADES_FILE = "trades.csv"
+SIGNALS_FILE = "signals.csv"
+MAX_OPEN_TRADES_PER_SYMBOL = 1
+TRADE_EXPIRATION_HOURS = 48
+
+BACKTEST_SYMBOLS = TOP_SYMBOLS
+BACKTEST_INTERVAL = ENTRY_INTERVAL
+BACKTEST_CANDLES = 5000
+START_BALANCE = 1000
+RISK_PER_TRADE = 0.01
+MAX_OPEN_TRADES = 3
+MAX_DAILY_LOSS = 0.03
+MAX_CONSECUTIVE_LOSSES = 3
+MAX_PORTFOLIO_EXPOSURE = 0.30
+
+# Historical simulations retain their already-validated 1% interpretation.
+INITIAL_BALANCE = START_BALANCE
+BACKTEST_RISK_PERCENT = 1
