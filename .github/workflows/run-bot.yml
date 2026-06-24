@@ -41,17 +41,16 @@ jobs:
 
       - name: Commit updated bot data
         shell: bash
+        working-directory: .
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add signal_history.csv signal_performance_summary.csv \
-            trades.csv signals.csv opportunities.csv market_regime.csv \
-            portfolio_summary.csv risk_report.csv \
-            portfolio_equity.png portfolio_pnl_distribution.png
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add crypto-signal-bot/*.csv crypto-signal-bot/*.png
 
           if git diff --cached --quiet; then
-            echo "No CSV changes to commit."
+            echo "No changes to commit"
           else
             git commit -m "Update bot data"
-            git push
+            git pull --rebase origin main || true
+            git push origin main
           fi
