@@ -1,6 +1,8 @@
-"""Plain-text Telegram dashboard for paper-trading analytics."""
+"""Plain-text Telegram dashboard and /report command handler."""
 
+import json
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -15,6 +17,7 @@ from risk_manager import get_risk_status
 
 
 _disabled_notified = False
+_commands_initialized = False
 
 
 def _credentials() -> Optional[tuple[str, str]]:
@@ -29,12 +32,8 @@ def _credentials() -> Optional[tuple[str, str]]:
     return token, chat_id
 
 
-def send_message(text: str) -> bool:
-    """Send one Bot API message, failing safely without exposing credentials."""
-    credentials = _credentials()
-    if credentials is None:
-        return False
-    token, chat_id = credentials
+def _send_direct(token: str, chat_id: str, text: str) -> bool:
+    """Send without command initialization, preventing recursive handlers."""
     try:
         response = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
@@ -52,9 +51,232 @@ def send_message(text: str) -> bool:
         return False
 
 
+def send_message(text: str) -> bool:
+    """Send one Bot API message, failing safely without exposing credentials."""
+    credentials = _credentials()
+    if credentials is None:
+        return False
+    token, chat_id = credentials
+    _initialize_commands(token, chat_id)
+    return _send_direct(token, chat_id, text)
+
+
 def _read_csv(filename: str) -> pd.DataFrame:
     path = Path(filename)
     return pd.read_csv(path) if path.exists() else pd.DataFrame()
+
+
+def _normalized_direction(signal: Any) -> str:
+    value = str(signal).upper()
+    if value in {"BUY", "LONG"}:
+        return "LONG"
+    if value in {"SELL", "SHORT"}:
+        return "SHORT"
+    return "IGNORE"
+
+
+def _latest_signal_observations(history: pd.DataFrame) -> pd.DataFrame:
+    """Return one most-mature completed PnL observation per valid signal."""
+    rows = []
+    for _, signal in history.iterrows():
+        direction = _normalized_direction(signal.get("signal", ""))
+        if direction == "IGNORE":
+            continue
+        for suffix in ("7d", "48h", "24h"):
+            value = pd.to_numeric(
+                pd.Series([signal.get(f"pnl_{suffix}")]), errors="coerce"
+            ).iloc[0]
+            if pd.notna(value):
+                rows.append(
+                    {
+                        "symbol": str(signal["symbol"]),
+                        "direction": direction,
+                        "pnl": float(value),
+                    }
+                )
+                break
+    return pd.DataFrame(rows, columns=["symbol", "direction", "pnl"])
+
+
+def generate_report_message() -> str:
+    """Build the /report response from persisted cumulative performance."""
+    summary_frame = _read_csv("signal_performance_summary.csv")
+    history = _read_csv("signal_history.csv")
+    heading = "📊 Signal Performance Report"
+    if summary_frame.empty:
+        return f"{heading}\n\nNot enough completed signals yet."
+    summary = summary_frame.iloc[-1]
+    evaluated = 0
+    for column in ("evaluated_24h", "evaluated_48h", "evaluated_7d"):
+        value = pd.to_numeric(summary.get(column, 0), errors="coerce")
+        evaluated += int(value) if pd.notna(value) else 0
+    observations = _latest_signal_observations(history)
+    if evaluated == 0 or observations.empty:
+        return f"{heading}\n\nNot enough completed signals yet."
+
+    valid_history = history.copy()
+    valid_history["direction"] = valid_history["signal"].apply(_normalized_direction)
+    valid_history = valid_history[valid_history["direction"].isin({"LONG", "SHORT"})]
+
+    direction_stats = {}
+    for direction in ("LONG", "SHORT"):
+        direction_history = valid_history[valid_history["direction"] == direction]
+        completed = observations[observations["direction"] == direction]
+        direction_stats[direction] = {
+            "count": len(direction_history),
+            "win_rate": (
+                (completed["pnl"] > 0).mean() * 100 if not completed.empty else 0.0
+            ),
+            "average": completed["pnl"].mean() if not completed.empty else np.nan,
+        }
+
+    coin_performance = observations.groupby("symbol")["pnl"].mean().sort_values()
+    best_coin = str(coin_performance.index[-1])
+    worst_coin = str(coin_performance.index[0])
+    direction_averages = {
+        direction: stats["average"]
+        for direction, stats in direction_stats.items()
+        if pd.notna(stats["average"])
+    }
+    best_signal = (
+        max(direction_averages, key=direction_averages.get)
+        if direction_averages
+        else "N/A"
+    )
+    average_return = float(observations["pnl"].mean())
+
+    return (
+        f"{heading}\n\n"
+        f"Signals tracked: {int(summary['total_signals'])}\n\n"
+        "24h Results\n"
+        f"Win Rate: {float(summary['win_rate_24h']):.1f}%\n"
+        f"Average PnL: {float(summary['avg_pnl_24h']):+.2f}%\n\n"
+        "48h Results\n"
+        f"Win Rate: {float(summary['win_rate_48h']):.1f}%\n"
+        f"Average PnL: {float(summary['avg_pnl_48h']):+.2f}%\n\n"
+        "7d Results\n"
+        f"Win Rate: {float(summary['win_rate_7d']):.1f}%\n"
+        f"Average PnL: {float(summary['avg_pnl_7d']):+.2f}%\n\n"
+        "LONG signals:\n"
+        f"Count: {direction_stats['LONG']['count']}\n"
+        f"Win Rate: {direction_stats['LONG']['win_rate']:.1f}%\n\n"
+        "SHORT signals:\n"
+        f"Count: {direction_stats['SHORT']['count']}\n"
+        f"Win Rate: {direction_stats['SHORT']['win_rate']:.1f}%\n\n"
+        f"Best coin:\n{best_coin}\n\n"
+        f"Worst coin:\n{worst_coin}\n\n"
+        f"Best signal:\n{best_signal}\n\n"
+        f"Average return:\n{average_return:+.2f}%"
+    )
+
+
+def register_report_command(token: Optional[str] = None) -> bool:
+    """Register /report in Telegram's command menu with setMyCommands."""
+    if token is None:
+        credentials = _credentials()
+        if credentials is None:
+            return False
+        token = credentials[0]
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{token}/setMyCommands",
+            data={
+                "commands": json.dumps(
+                    [
+                        {
+                            "command": "report",
+                            "description": "Signal performance report",
+                        }
+                    ]
+                )
+            },
+            timeout=15,
+        )
+        response.raise_for_status()
+        return bool(response.json().get("ok", False))
+    except (requests.RequestException, ValueError):
+        print("Telegram command registration failed.")
+        return False
+
+
+def _fetch_updates(token: str, offset: Optional[int] = None, timeout: int = 0) -> list:
+    params: dict[str, Any] = {
+        "timeout": timeout,
+        "allowed_updates": json.dumps(["message"]),
+    }
+    if offset is not None:
+        params["offset"] = offset
+    response = requests.get(
+        f"https://api.telegram.org/bot{token}/getUpdates",
+        params=params,
+        timeout=max(15, timeout + 5),
+    )
+    response.raise_for_status()
+    payload = response.json()
+    return payload.get("result", []) if payload.get("ok", False) else []
+
+
+def _handle_updates(token: str, chat_id: str, updates: list) -> Optional[int]:
+    highest_update_id: Optional[int] = None
+    for update in updates:
+        update_id = int(update.get("update_id", 0))
+        highest_update_id = max(highest_update_id or update_id, update_id)
+        message = update.get("message", {})
+        incoming_chat = str(message.get("chat", {}).get("id", ""))
+        command = str(message.get("text", "")).strip().split(maxsplit=1)[0]
+        if incoming_chat == str(chat_id) and command.split("@", 1)[0] == "/report":
+            _send_direct(token, chat_id, generate_report_message())
+    return highest_update_id
+
+
+def process_telegram_commands(
+    token: Optional[str] = None, chat_id: Optional[str] = None
+) -> bool:
+    """Process pending /report commands once and acknowledge handled updates."""
+    if token is None or chat_id is None:
+        credentials = _credentials()
+        if credentials is None:
+            return False
+        token, chat_id = credentials
+    try:
+        updates = _fetch_updates(token)
+        highest = _handle_updates(token, chat_id, updates)
+        if highest is not None:
+            # A higher offset confirms all returned updates with Telegram.
+            _fetch_updates(token, offset=highest + 1)
+        return True
+    except (requests.RequestException, ValueError):
+        print("Telegram command polling failed.")
+        return False
+
+
+def _initialize_commands(token: str, chat_id: str) -> None:
+    global _commands_initialized
+    if _commands_initialized:
+        return
+    register_report_command(token)
+    process_telegram_commands(token, chat_id)
+    _commands_initialized = True
+
+
+def run_command_listener() -> None:
+    """Continuously handle /report while this module is run as a process."""
+    credentials = _credentials()
+    if credentials is None:
+        return
+    token, chat_id = credentials
+    register_report_command(token)
+    offset: Optional[int] = None
+    print("Telegram /report listener started.")
+    while True:
+        try:
+            updates = _fetch_updates(token, offset=offset, timeout=30)
+            highest = _handle_updates(token, chat_id, updates)
+            if highest is not None:
+                offset = highest + 1
+        except (requests.RequestException, ValueError):
+            print("Telegram command polling failed.")
+            time.sleep(5)
 
 
 def send_market_regime(regime_data: Optional[dict[str, Any]] = None) -> bool:
@@ -242,3 +464,7 @@ def send_signal_performance(summary: Optional[dict[str, Any]] = None) -> bool:
         f"Worst signal:\n{summary['worst_signal']}"
     )
     return send_message(text)
+
+
+if __name__ == "__main__":
+    run_command_listener()
