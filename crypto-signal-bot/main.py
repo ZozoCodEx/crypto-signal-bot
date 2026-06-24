@@ -62,7 +62,7 @@ def _signal_payload(opportunity, can_open: bool) -> dict:
     trend_score = 10 if trend_bullish else 3
     return {
         "symbol": opportunity["symbol"],
-        "signal": "LONG" if can_open else "WAIT",
+        "signal": "LONG" if can_open else "IGNORE",
         "confidence": int(opportunity["score"]),
         "price": float(opportunity["price"]),
         "atr": float(opportunity["atr"]),
