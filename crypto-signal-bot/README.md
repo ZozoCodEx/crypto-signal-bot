@@ -182,9 +182,9 @@ Signals and simulated results are educational analytics, not financial advice.
 The repository workflow `.github/workflows/run-bot.yml` runs every 15 minutes and can also
 be started manually from the repository's **Actions** tab with
 `workflow_dispatch`. It installs Python 3.11 dependencies, runs `python main.py`,
-and commits changes to `trades.csv`, `signals.csv`, `opportunities.csv`, and
-`market_regime.csv` as `github-actions[bot]`. If none of those files changed, the
-workflow exits successfully without creating an empty commit.
+and commits the live paper, regime, risk, opportunity, and signal-performance
+CSV files as `github-actions[bot]`. If none of those files changed, the workflow
+exits successfully without creating an empty commit.
 
 Every automated run detects the BTC regime, updates existing virtual positions,
 scans all opportunities, records signals, and permits new ELITE paper trades only
@@ -195,9 +195,9 @@ execution.
 
 ## Telegram Dashboard
 
-The optional Telegram dashboard sends four plain-text updates after each complete
-run: market regime, top five opportunities, open paper trades, and paper
-portfolio statistics. If either credential is missing, the bot prints
+The optional Telegram dashboard sends plain-text updates after each complete run,
+including market regime, opportunities, positions, portfolio, risk, and signal
+performance. If either credential is missing, the bot prints
 `Telegram disabled.` and continues normally.
 
 1. Open [@BotFather](https://t.me/BotFather), run `/newbot`, choose a name and a
@@ -247,3 +247,22 @@ regenerates `risk_exposure.png`, `daily_pnl.png`, and
 `consecutive_losses.png`. Telegram receives the same balance, exposure, daily
 loss, streak, and enabled/disabled decision. These controls protect only virtual
 paper capital and do not modify the ELITE strategy or connect to an exchange.
+
+## Signal Performance Tracking
+
+`signal_performance_tracker.py` automatically snapshots every current
+opportunity into `signal_history.csv`. Exact ELITE opportunities are recorded as
+`LONG`; all other rows are retained as `IGNORE` observations and excluded from
+trade-signal statistics. The compound duplicate key is symbol, UTC creation
+hour, signal, and entry price.
+
+Every scheduled run freezes the first available public price observation after
+24 hours, 48 hours, and 7 days, then calculates direction-aware PnL and WIN/LOSS
+results. `signal_performance_summary.csv` is an append-only cumulative report of
+evaluation counts, win rates, average PnL, and best/worst signals. Telegram sends
+the latest summary, or `Not enough data yet.` until at least one valid signal has
+reached an evaluation horizon.
+
+After 30 days, review the latest cumulative row alongside individual entries in
+`signal_history.csv` to compare short- and medium-horizon behavior. This remains
+public-data observation only: no API keys, futures, leverage, or real orders.

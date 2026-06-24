@@ -203,3 +203,42 @@ def send_risk_manager(risk_data: Optional[dict[str, Any]] = None) -> bool:
         f"Reason: {risk_data['reason']}"
     )
     return send_message(text)
+
+
+def send_signal_performance(summary: Optional[dict[str, Any]] = None) -> bool:
+    """Send cumulative valid-signal performance across all evaluation horizons."""
+    if summary is None:
+        frame = _read_csv("signal_performance_summary.csv")
+        if frame.empty:
+            return send_message("📊 Signal Performance\n\nNot enough data yet.")
+        summary = frame.iloc[-1].to_dict()
+    evaluated = (
+        int(summary["evaluated_24h"])
+        + int(summary["evaluated_48h"])
+        + int(summary["evaluated_7d"])
+    )
+    if evaluated == 0:
+        return send_message(
+            "📊 Signal Performance\n\n"
+            f"Total signals tracked: {int(summary['total_signals'])}\n\n"
+            "Not enough data yet."
+        )
+    text = (
+        "📊 Signal Performance\n\n"
+        f"Total signals tracked: {int(summary['total_signals'])}\n\n"
+        "24h:\n"
+        f"Evaluated: {int(summary['evaluated_24h'])}\n"
+        f"Win rate: {float(summary['win_rate_24h']):.1f}%\n"
+        f"Avg PnL: {float(summary['avg_pnl_24h']):+.2f}%\n\n"
+        "48h:\n"
+        f"Evaluated: {int(summary['evaluated_48h'])}\n"
+        f"Win rate: {float(summary['win_rate_48h']):.1f}%\n"
+        f"Avg PnL: {float(summary['avg_pnl_48h']):+.2f}%\n\n"
+        "7d:\n"
+        f"Evaluated: {int(summary['evaluated_7d'])}\n"
+        f"Win rate: {float(summary['win_rate_7d']):.1f}%\n"
+        f"Avg PnL: {float(summary['avg_pnl_7d']):+.2f}%\n\n"
+        f"Best signal:\n{summary['best_signal']}\n\n"
+        f"Worst signal:\n{summary['worst_signal']}"
+    )
+    return send_message(text)

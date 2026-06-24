@@ -17,11 +17,13 @@ from position_tracker import (
 )
 from risk_manager import can_open_trade, update_risk_report
 from signal_logger import save_signal
+from signal_performance_tracker import run_signal_performance_tracker
 from telegram_bot import (
     send_market_regime,
     send_open_trades,
     send_portfolio_summary,
     send_risk_manager,
+    send_signal_performance,
     send_top_opportunities,
 )
 
@@ -139,6 +141,8 @@ def main() -> None:
         )
         save_signal(_signal_payload(opportunity, eligible))
 
+    performance_summary = run_signal_performance_tracker(opportunities, regime)
+
     print_opportunities(opportunities)
 
     if regime == "BULL":
@@ -180,6 +184,7 @@ def main() -> None:
     send_open_trades(current_trades)
     send_portfolio_summary(current_trades)
     send_risk_manager(risk_status)
+    send_signal_performance(performance_summary)
 
 
 if __name__ == "__main__":
