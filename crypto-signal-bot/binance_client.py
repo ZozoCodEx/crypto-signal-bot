@@ -6,7 +6,14 @@ import pandas as pd
 import requests
 
 
-KLINES_URL = "https://api.binance.com/api/v3/klines"
+BASE_URLS = [
+    "https://api.binance.com",
+    "https://api1.binance.com",
+    "https://api2.binance.com",
+    "https://api3.binance.com",
+    "https://data-api.binance.vision",
+]
+KLINES_ENDPOINT = "/api/v3/klines"
 OUTPUT_COLUMNS = [
     "open_time",
     "open",
@@ -30,13 +37,25 @@ def _request_klines(
     if end_time is not None:
         params["endTime"] = end_time
 
-    response = requests.get(
-        KLINES_URL,
-        params=params,
-        timeout=15,
-    )
-    response.raise_for_status()
-    return response.json()
+    last_error: Optional[requests.RequestException] = None
+    for base_url in BASE_URLS:
+        try:
+            response = requests.get(
+                f"{base_url}{KLINES_ENDPOINT}",
+                params=params,
+                timeout=15,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            print(f"Binance market data endpoint succeeded: {base_url}")
+            return payload
+        except requests.RequestException as error:
+            # Includes HTTP errors such as 451, timeouts, and connection errors.
+            last_error = error
+
+    raise requests.RequestException(
+        "All Binance public market data endpoints failed"
+    ) from last_error
 
 
 def _to_frame(payload: list[list[Any]], symbol: str, interval: str) -> pd.DataFrame:
