@@ -103,8 +103,19 @@ def generate_report_message() -> str:
     summary_frame = _read_csv("signal_performance_summary.csv")
     history = _read_csv("signal_history.csv")
     heading = "📊 Signal Performance Report"
+    directions = (
+        history["signal"].apply(_normalized_direction)
+        if "signal" in history
+        else pd.Series(dtype=str)
+    )
+    observation_counts = (
+        f"Total observations: {len(history)}\n"
+        f"LONG: {int((directions == 'LONG').sum())}\n"
+        f"SHORT: {int((directions == 'SHORT').sum())}\n"
+        f"IGNORE: {int((directions == 'IGNORE').sum())}"
+    )
     if summary_frame.empty:
-        return f"{heading}\n\nNot enough completed signals yet."
+        return f"{heading}\n\n{observation_counts}\n\nNot enough completed signals yet."
     summary = summary_frame.iloc[-1]
     evaluated = 0
     for column in ("evaluated_24h", "evaluated_48h", "evaluated_7d"):
@@ -112,7 +123,7 @@ def generate_report_message() -> str:
         evaluated += int(value) if pd.notna(value) else 0
     observations = _latest_signal_observations(history)
     if evaluated == 0 or observations.empty:
-        return f"{heading}\n\nNot enough completed signals yet."
+        return f"{heading}\n\n{observation_counts}\n\nNot enough completed signals yet."
 
     valid_history = history.copy()
     valid_history["direction"] = valid_history["signal"].apply(_normalized_direction)
@@ -147,7 +158,7 @@ def generate_report_message() -> str:
 
     return (
         f"{heading}\n\n"
-        f"Signals tracked: {int(summary['total_signals'])}\n\n"
+        f"{observation_counts}\n\n"
         "24h Results\n"
         f"Win Rate: {float(summary['win_rate_24h']):.1f}%\n"
         f"Average PnL: {float(summary['avg_pnl_24h']):+.2f}%\n\n"

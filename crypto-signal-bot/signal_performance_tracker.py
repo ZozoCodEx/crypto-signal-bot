@@ -256,7 +256,10 @@ def append_performance_summary(history: Optional[pd.DataFrame] = None) -> dict[s
     best, worst = _best_and_worst(history)
     row = {
         "timestamp": _now().isoformat(),
-        "total_signals": int(history["signal"].isin(VALID_SIGNALS).sum()),
+        # Total tracking includes every scanner observation. Horizon metrics
+        # below remain restricted to VALID_SIGNALS, so IGNORE never affects
+        # trade win rate or PnL statistics.
+        "total_signals": int(len(history)),
         "evaluated_24h": metrics_24h[0],
         "win_rate_24h": metrics_24h[1],
         "avg_pnl_24h": metrics_24h[2],
