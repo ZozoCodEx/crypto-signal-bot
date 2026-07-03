@@ -100,3 +100,4 @@ timestamp,balance,daily_pnl,daily_loss_percent,open_trades,exposure,consecutive_
 2026-07-03T08:28:57.821553+00:00,1000.0,0.0,0.0,0,0.0,0,True,Risk checks passed
 2026-07-03T11:11:22.946700+00:00,1000.0,0.0,0.0,0,0.0,0,True,Risk checks passed
 2026-07-03T13:11:04.178312+00:00,1000.0,0.0,0.0,0,0.0,0,True,Risk checks passed
+2026-07-03T15:25:47.820095+00:00,1000.0,0.0,0.0,0,0.0,0,True,Risk checks passed
